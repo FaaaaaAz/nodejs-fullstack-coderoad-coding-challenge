@@ -1,0 +1,75 @@
+name: Deploy Fullstack to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Build Frontend
+      - name: Install frontend dependencies
+        run: |
+          cd client
+          npm install
+
+      - name: Build frontend
+        run: |
+          cd client
+          npm run build
+
+      # Build Backend
+      - name: Install backend dependencies
+        run: |
+          cd server
+          npm install
+
+      - name: Build backend
+        run: |
+          cd server
+          npm run build
+
+      # Deploy Frontend to EC2
+      - name: Deploy frontend to EC2
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          source: "client/dist/*"
+          target: "/var/www/html"
+          strip_components: 2
+
+      # Deploy Backend to EC2
+      - name: Deploy backend to EC2
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          source: "server/dist/*,server/package.json,server/db.json"
+          target: "/var/www/backend"
+          strip_components: 1
+
+      # Install dependencies and restart backend on EC2
+      - name: Install dependencies and restart backend
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            cd /var/www/backend
+            npm install --production
+            pm2 restart nodejs-app || pm2 start dist/server.js --name nodejs-app
